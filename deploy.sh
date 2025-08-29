@@ -13,6 +13,10 @@ pm2 stop pdf-ai-reader
 echo "Installing dependencies..."
 npm install
 
+# Fix file paths in database (if needed)
+echo "Checking and fixing file paths..."
+node fix-file-paths.js
+
 # Start the server
 echo "Starting server..."
 pm2 start server.js --name pdf-ai-reader
@@ -21,4 +25,4 @@ pm2 start server.js --name pdf-ai-reader
 pm2 save
 
 echo "Deployment completed!"
-echo "Server should now be running with the trust proxy fix."
+echo "Server should now be running with the trust proxy fix and file path resolution."

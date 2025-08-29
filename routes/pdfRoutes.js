@@ -25,4 +25,7 @@ router.get('/platform/:platform', PdfController.getPdfsByPlatform);
 // View PDF (serves PDF directly)
 router.get('/view/:fileName', PdfController.viewPdf);
 
+// Debug endpoint for file path issues
+router.get('/debug/:fileName', PdfController.debugFilePath);
+
 module.exports = router;

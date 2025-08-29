@@ -41,6 +41,40 @@ const upload = multer({
 class PdfController {
     static uploadMiddleware = upload.array('pdfs', 200);
 
+    // Helper function to resolve file path correctly in production
+    static resolveFilePath(filePath) {
+        if (!filePath) return null;
+        
+        // If it's already an absolute path, check if it exists
+        if (path.isAbsolute(filePath)) {
+            if (fs.existsSync(filePath)) {
+                return filePath;
+            }
+        }
+        
+        // Try to resolve relative to uploads directory
+        const uploadsDir = path.join(__dirname, '..', 'uploads');
+        const fileName = path.basename(filePath);
+        const resolvedPath = path.join(uploadsDir, fileName);
+        
+        if (fs.existsSync(resolvedPath)) {
+            return resolvedPath;
+        }
+        
+        // If still not found, try to find by filename in uploads directory
+        try {
+            const files = fs.readdirSync(uploadsDir);
+            const matchingFile = files.find(file => file.includes(fileName.replace(/\.[^/.]+$/, "")));
+            if (matchingFile) {
+                return path.join(uploadsDir, matchingFile);
+            }
+        } catch (error) {
+            console.error('Error searching for file:', error);
+        }
+        
+        return null;
+    }
+
     // Helper function to calculate file hash
     static async calculateFileHash(filePath) {
         return new Promise((resolve, reject) => {
@@ -258,13 +292,14 @@ class PdfController {
             }
 
             const filePath = invoice.filePath;
+            const resolvedFilePath = PdfController.resolveFilePath(filePath);
 
-            if (!fs.existsSync(filePath)) {
+            if (!resolvedFilePath) {
                 return res.status(404).json({ error: 'PDF file not found on server' });
             }
 
             // Download the file using the actual filePath from database
-            res.download(filePath, invoice.fileName);
+            res.download(resolvedFilePath, invoice.fileName);
         } catch (error) {
             console.error('Download PDF error:', error);
             res.status(500).json({ error: error.message });
@@ -284,10 +319,11 @@ class PdfController {
             }
 
             const filePath = invoice.filePath;
+            const resolvedFilePath = PdfController.resolveFilePath(filePath);
             let fileStats = null;
 
-            if (filePath && fs.existsSync(filePath)) {
-                fileStats = fs.statSync(filePath);
+            if (resolvedFilePath && fs.existsSync(resolvedFilePath)) {
+                fileStats = fs.statSync(resolvedFilePath);
             }
 
             res.json({
@@ -321,13 +357,14 @@ class PdfController {
             }
 
             const filePath = invoice.filePath;
+            const resolvedFilePath = PdfController.resolveFilePath(filePath);
 
-            if (!fs.existsSync(filePath)) {
+            if (!resolvedFilePath) {
                 return res.status(404).json({ error: 'PDF file not found on server' });
             }
 
             // Get file stats
-            const stats = fs.statSync(filePath);
+            const stats = fs.statSync(resolvedFilePath);
             const fileSize = stats.size;
             const range = req.headers.range;
 
@@ -337,7 +374,7 @@ class PdfController {
                 const start = parseInt(parts[0], 10);
                 const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
                 const chunksize = (end - start) + 1;
-                const file = fs.createReadStream(filePath, { start, end });
+                const file = fs.createReadStream(resolvedFilePath, { start, end });
                 
                 res.writeHead(206, {
                     'Content-Range': `bytes ${start}-${end}/${fileSize}`,
@@ -362,7 +399,7 @@ class PdfController {
                 res.setHeader('Access-Control-Allow-Headers', 'Range, Accept-Ranges, Content-Range');
 
                 // Stream the PDF file
-                const fileStream = fs.createReadStream(filePath);
+                const fileStream = fs.createReadStream(resolvedFilePath);
                 fileStream.pipe(res);
             }
         } catch (error) {
@@ -433,7 +470,7 @@ class PdfController {
             }
 
             // Check if all files exist
-            const existingFiles = invoices.filter(inv => inv.filePath && fs.existsSync(inv.filePath));
+            const existingFiles = invoices.filter(inv => inv.filePath && PdfController.resolveFilePath(inv.filePath));
 
             if (existingFiles.length === 0) {
                 return res.status(404).json({ error: 'No PDF files found on server' });
@@ -476,9 +513,10 @@ class PdfController {
                     try {
                         const fileName = invoice.fileName;
                         const filePath = invoice.filePath;
+                        const resolvedFilePath = PdfController.resolveFilePath(filePath);
                         
-                        if (fs.existsSync(filePath)) {
-                            archive.file(filePath, { name: fileName });
+                        if (resolvedFilePath && fs.existsSync(resolvedFilePath)) {
+                            archive.file(resolvedFilePath, { name: fileName });
                         } else {
                             console.warn(`File not found: ${filePath}`);
                         }
@@ -506,6 +544,48 @@ class PdfController {
             if (!res.headersSent) {
                 res.status(500).json({ error: error.message });
             }
+        }
+    }
+
+    // Debug endpoint to help troubleshoot file path issues
+    static async debugFilePath(req, res) {
+        try {
+            const { fileName } = req.params;
+            
+            // Find the invoice by fileName
+            const invoice = await Invoice.findOne({ fileName });
+            
+            if (!invoice) {
+                return res.status(404).json({ error: 'Invoice not found' });
+            }
+
+            const filePath = invoice.filePath;
+            const resolvedFilePath = PdfController.resolveFilePath(filePath);
+            const uploadsDir = path.join(__dirname, '..', 'uploads');
+            
+            // Get list of files in uploads directory
+            let uploadsFiles = [];
+            try {
+                uploadsFiles = fs.readdirSync(uploadsDir);
+            } catch (error) {
+                console.error('Error reading uploads directory:', error);
+            }
+
+            res.json({
+                fileName: invoice.fileName,
+                originalFilePath: filePath,
+                resolvedFilePath: resolvedFilePath,
+                fileExists: resolvedFilePath ? fs.existsSync(resolvedFilePath) : false,
+                uploadsDirectory: uploadsDir,
+                uploadsDirectoryExists: fs.existsSync(uploadsDir),
+                filesInUploads: uploadsFiles,
+                matchingFiles: uploadsFiles.filter(file => 
+                    file.includes(fileName.replace(/\.[^/.]+$/, ""))
+                )
+            });
+        } catch (error) {
+            console.error('Debug file path error:', error);
+            res.status(500).json({ error: error.message });
         }
     }
 }
