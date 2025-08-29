@@ -249,8 +249,10 @@ class PdfController {
     static async downloadPdf(req, res) {
         try {
             const { fileName } = req.params;
+            
+            // Find the invoice by fileName (this is the original filename without prefix)
             const invoice = await Invoice.findOne({ fileName });
-
+            
             if (!invoice || !invoice.filePath) {
                 return res.status(404).json({ error: 'PDF file not found' });
             }
@@ -261,8 +263,10 @@ class PdfController {
                 return res.status(404).json({ error: 'PDF file not found on server' });
             }
 
+            // Download the file using the actual filePath from database
             res.download(filePath, invoice.fileName);
         } catch (error) {
+            console.error('Download PDF error:', error);
             res.status(500).json({ error: error.message });
         }
     }
@@ -271,8 +275,10 @@ class PdfController {
     static async getPdfInfo(req, res) {
         try {
             const { fileName } = req.params;
+            
+            // Find the invoice by fileName (this is the original filename without prefix)
             const invoice = await Invoice.findOne({ fileName });
-
+            
             if (!invoice) {
                 return res.status(404).json({ error: 'Invoice not found' });
             }
@@ -297,6 +303,7 @@ class PdfController {
                 processedAt: invoice.processedAt
             });
         } catch (error) {
+            console.error('Get PDF info error:', error);
             res.status(500).json({ error: error.message });
         }
     }
@@ -305,8 +312,10 @@ class PdfController {
     static async viewPdf(req, res) {
         try {
             const { fileName } = req.params;
+            
+            // Find the invoice by fileName (this is the original filename without prefix)
             const invoice = await Invoice.findOne({ fileName });
-
+            
             if (!invoice || !invoice.filePath) {
                 return res.status(404).json({ error: 'PDF file not found' });
             }
