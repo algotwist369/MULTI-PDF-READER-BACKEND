@@ -23,6 +23,12 @@ router.get('/analytics/summary', InvoiceController.getAnalytics);
 // Get invoices by platform (must come before /:id route)
 router.get('/platform/:platform', InvoiceController.getInvoicesByPlatform);
 
+// Bulk delete invoices by time period
+router.delete('/bulk-delete', InvoiceController.bulkDeleteInvoices);
+
+// Preview bulk delete (get count without deleting)
+router.post('/bulk-delete/preview', InvoiceController.previewBulkDelete);
+
 // Get invoice by ID
 router.get('/:id', InvoiceController.getInvoiceById);
 
