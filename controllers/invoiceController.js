@@ -1,5 +1,6 @@
 const Invoice = require('../models/Invoice');
 const { validationResult } = require('express-validator');
+const path = require('path');
 
 class InvoiceController {
     static async getAllInvoices(req, res) {
@@ -74,7 +75,7 @@ class InvoiceController {
 
                 const inv = doc.toObject();
                 inv.pdfUrl = inv.filePath
-                    ? `${req.protocol}://${req.get('host')}/uploads/${inv.filePath}`
+                    ? `${req.protocol}://${req.get('host')}/uploads/${path.basename(inv.filePath)}`
                     : null;
 
                 res.write(JSON.stringify(inv));
@@ -105,7 +106,7 @@ class InvoiceController {
             res.json({
                 invoice: {
                     ...invoice.toObject(),
-                    pdfUrl: invoice.filePath ? `${req.protocol}://${req.get('host')}/uploads/${invoice.filePath}` : null
+                    pdfUrl: invoice.filePath ? `${req.protocol}://${req.get('host')}/uploads/${path.basename(invoice.filePath)}` : null
                 }
             });
         } catch (error) {
@@ -153,7 +154,13 @@ class InvoiceController {
             cursor.on('data', (doc) => {
                 if (!first) res.write(',');
                 first = false;
-                res.write(JSON.stringify(doc.toObject()));
+                
+                const inv = doc.toObject();
+                inv.pdfUrl = inv.filePath
+                    ? `${req.protocol}://${req.get('host')}/uploads/${path.basename(inv.filePath)}`
+                    : null;
+                
+                res.write(JSON.stringify(inv));
             });
 
             cursor.on('end', () => {

@@ -1,4 +1,4 @@
- 
+
 
 const express = require('express');
 const multer = require('multer');
@@ -18,8 +18,7 @@ const storage = multer.diskStorage({
         cb(null, uploadDir);
     },
     filename: (req, file, cb) => {
-        // ✅ Safer: prepend timestamp to avoid overwriting duplicate files
-        const uniqueName = Date.now() + '-' + file.originalname;
+        const uniqueName = Math.floor(Math.random() * 10000) + '-' + file.originalname;
         cb(null, uniqueName);
     }
 });
@@ -47,15 +46,15 @@ class PdfController {
         return new Promise((resolve, reject) => {
             const hash = crypto.createHash('md5');
             const stream = fs.createReadStream(filePath);
-            
+
             stream.on('data', (data) => {
                 hash.update(data);
             });
-            
+
             stream.on('end', () => {
                 resolve(hash.digest('hex'));
             });
-            
+
             stream.on('error', (error) => {
                 reject(error);
             });
@@ -66,7 +65,7 @@ class PdfController {
     static async checkForDuplicates(filePath, originalName) {
         try {
             const fileHash = await this.calculateFileHash(filePath);
-            
+
             // Check by file hash
             const existingByHash = await Invoice.findOne({ fileHash });
             if (existingByHash) {
@@ -76,12 +75,12 @@ class PdfController {
                     existingFile: existingByHash
                 };
             }
-            
+
             // Check by original filename (case-insensitive)
             const existingByName = await Invoice.findOne({
                 fileName: { $regex: new RegExp(`^${originalName}$`, 'i') }
             });
-            
+
             if (existingByName) {
                 return {
                     isDuplicate: true,
@@ -89,7 +88,7 @@ class PdfController {
                     existingFile: existingByName
                 };
             }
-            
+
             return { isDuplicate: false };
         } catch (error) {
             console.error('Error checking for duplicates:', error);
@@ -115,13 +114,11 @@ class PdfController {
 
                 const batchPromises = batch.map(async (file) => {
                     try {
-                        // Check for duplicates
-                        const duplicateCheck = await this.checkForDuplicates(file.path, file.originalname);
-                        
+                        // Call directly on PdfController, not `this`
+                        const duplicateCheck = await PdfController.checkForDuplicates(file.path, file.originalname);
+
                         if (duplicateCheck.isDuplicate) {
-                            // Remove the duplicate file
                             fs.unlinkSync(file.path);
-                            
                             return {
                                 fileName: file.originalname,
                                 status: 'duplicate',
@@ -130,19 +127,18 @@ class PdfController {
                             };
                         }
 
-                        // Calculate file hash for future duplicate detection
-                        const fileHash = await this.calculateFileHash(file.path);
-                        
+                        // Same here
+                        const fileHash = await PdfController.calculateFileHash(file.path);
+
                         const result = await processor.processPdf(file);
 
-                        // ✅ Save file path and hash to DB
                         await Invoice.updateOne(
                             { fileName: file.originalname },
-                            { 
-                                $set: { 
+                            {
+                                $set: {
                                     filePath: file.path,
                                     fileHash: fileHash
-                                } 
+                                }
                             }
                         );
 
@@ -157,13 +153,13 @@ class PdfController {
                             pdfUrl: `${req.protocol}://${req.get('host')}/uploads/${path.basename(file.path)}`
                         };
                     } catch (error) {
-                        // Clean up file on error
                         if (fs.existsSync(file.path)) {
                             fs.unlinkSync(file.path);
                         }
                         throw error;
                     }
                 });
+
 
                 const batchResults = await Promise.allSettled(batchPromises);
 
@@ -260,7 +256,7 @@ class PdfController {
             }
 
             const filePath = invoice.filePath;
-            
+
             if (!fs.existsSync(filePath)) {
                 return res.status(404).json({ error: 'PDF file not found on server' });
             }
@@ -283,7 +279,7 @@ class PdfController {
 
             const filePath = invoice.filePath;
             let fileStats = null;
-            
+
             if (filePath && fs.existsSync(filePath)) {
                 fileStats = fs.statSync(filePath);
             }
@@ -316,19 +312,52 @@ class PdfController {
             }
 
             const filePath = invoice.filePath;
-            
+
             if (!fs.existsSync(filePath)) {
                 return res.status(404).json({ error: 'PDF file not found on server' });
             }
 
-            // Set appropriate headers for PDF viewing
-            res.setHeader('Content-Type', 'application/pdf');
-            res.setHeader('Content-Disposition', `inline; filename="${invoice.fileName}"`);
-            
-            // Stream the PDF file
-            const fileStream = fs.createReadStream(filePath);
-            fileStream.pipe(res);
+            // Get file stats
+            const stats = fs.statSync(filePath);
+            const fileSize = stats.size;
+            const range = req.headers.range;
+
+            if (range) {
+                // Handle range requests for streaming
+                const parts = range.replace(/bytes=/, "").split("-");
+                const start = parseInt(parts[0], 10);
+                const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+                const chunksize = (end - start) + 1;
+                const file = fs.createReadStream(filePath, { start, end });
+                
+                res.writeHead(206, {
+                    'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+                    'Accept-Ranges': 'bytes',
+                    'Content-Length': chunksize,
+                    'Content-Type': 'application/pdf',
+                    'Content-Disposition': `inline; filename="${invoice.fileName}"`,
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+                    'Access-Control-Allow-Headers': 'Range, Accept-Ranges, Content-Range'
+                });
+                
+                file.pipe(res);
+            } else {
+                // Set appropriate headers for PDF viewing
+                res.setHeader('Content-Type', 'application/pdf');
+                res.setHeader('Content-Disposition', `inline; filename="${invoice.fileName}"`);
+                res.setHeader('Content-Length', fileSize);
+                res.setHeader('Accept-Ranges', 'bytes');
+                res.setHeader('Access-Control-Allow-Origin', '*');
+                res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+                res.setHeader('Access-Control-Allow-Headers', 'Range, Accept-Ranges, Content-Range');
+
+                // Stream the PDF file
+                const fileStream = fs.createReadStream(filePath);
+                fileStream.pipe(res);
+            }
         } catch (error) {
+            console.error('Error viewing PDF:', error);
             res.status(500).json({ error: error.message });
         }
     }
@@ -380,7 +409,7 @@ class PdfController {
             const { platform } = req.params;
             const { format = 'zip' } = req.query;
 
-            const validPlatforms = ['google_ads', 'meta_ads', 'other'];
+            const validPlatforms = ['google_ads', 'meta_ads', 'facebook_ads', 'instagram_ads', 'other'];
             if (!validPlatforms.includes(platform)) {
                 return res.status(400).json({ error: 'Invalid platform' });
             }
@@ -396,7 +425,7 @@ class PdfController {
 
             // Check if all files exist
             const existingFiles = invoices.filter(inv => inv.filePath && fs.existsSync(inv.filePath));
-            
+
             if (existingFiles.length === 0) {
                 return res.status(404).json({ error: 'No PDF files found on server' });
             }
@@ -408,17 +437,45 @@ class PdfController {
                     zlib: { level: 9 } // Sets the compression level
                 });
 
+                // Handle archive errors
+                archive.on('error', (err) => {
+                    console.error('Archive error:', err);
+                    if (!res.headersSent) {
+                        res.status(500).json({ error: 'Failed to create ZIP file' });
+                    }
+                });
+
+                // Handle archive warnings
+                archive.on('warning', (err) => {
+                    if (err.code === 'ENOENT') {
+                        console.warn('Archive warning:', err);
+                    } else {
+                        throw err;
+                    }
+                });
+
                 // Set response headers
                 res.setHeader('Content-Type', 'application/zip');
                 res.setHeader('Content-Disposition', `attachment; filename="${platform}_invoices.zip"`);
+                res.setHeader('Access-Control-Allow-Origin', '*');
 
                 // Pipe archive data to the response
                 archive.pipe(res);
 
                 // Add each PDF to the archive
                 existingFiles.forEach(invoice => {
-                    const fileName = invoice.fileName;
-                    archive.file(invoice.filePath, { name: fileName });
+                    try {
+                        const fileName = invoice.fileName;
+                        const filePath = invoice.filePath;
+                        
+                        if (fs.existsSync(filePath)) {
+                            archive.file(filePath, { name: fileName });
+                        } else {
+                            console.warn(`File not found: ${filePath}`);
+                        }
+                    } catch (err) {
+                        console.error(`Error adding file to archive: ${invoice.fileName}`, err);
+                    }
                 });
 
                 // Finalize the archive
@@ -437,7 +494,9 @@ class PdfController {
             }
         } catch (error) {
             console.error('Bulk download error:', error);
-            res.status(500).json({ error: error.message });
+            if (!res.headersSent) {
+                res.status(500).json({ error: error.message });
+            }
         }
     }
 }
