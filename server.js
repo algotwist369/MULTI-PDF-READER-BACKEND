@@ -12,6 +12,9 @@ const invoiceRoutes = require('./routes/invoiceRoutes');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Trust proxy - needed for rate limiting behind reverse proxy
+app.set('trust proxy', 1);
+
 // Security middleware
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" },
@@ -32,7 +35,7 @@ app.use(helmet({
 
 // CORS configuration
 app.use(cors({
-  origin: ['*', 'http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:3000', 'http://127.0.0.1:3001', 'https://dosadsexpence.in'],
+  origin: ['*', 'http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:3000', 'http://127.0.0.1:3001', 'https://dosadsexpence.in', 'https://daily.dosadsexpence.in'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Range'],
