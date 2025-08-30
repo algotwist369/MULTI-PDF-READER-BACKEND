@@ -4,12 +4,34 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 const path = require('path');
+const http = require('http');
+const socketIo = require('socket.io');
 
 const connectDB = require('./config/db');
 const pdfRoutes = require('./routes/pdfRoutes');
 const invoiceRoutes = require('./routes/invoiceRoutes');
 
 const app = express();
+const server = http.createServer(app);
+const io = socketIo(server, {
+    cors: {
+        origin: "http://localhost:3000",
+        methods: ["GET", "POST"]
+    }
+});
+
+// WebSocket connection handling
+io.on('connection', (socket) => {
+    console.log('Client connected:', socket.id);
+    
+    socket.on('disconnect', () => {
+        console.log('Client disconnected:', socket.id);
+    });
+});
+
+// Make io available globally
+app.set('io', io);
+
 const PORT = process.env.PORT || 3000;
 
 // Trust proxy - needed for rate limiting behind reverse proxy
@@ -102,6 +124,6 @@ app.use((error, req, res, next) => {
   });
 });
 
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });

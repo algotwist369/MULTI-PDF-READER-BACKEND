@@ -222,7 +222,29 @@ class InvoiceController {
                 { $sort: { totalAmount: -1 } }
             ]);
 
-            res.json({ analytics });
+            // Calculate overall totals
+            const overallTotals = await Invoice.aggregate([
+                { $match: matchStage },
+                {
+                    $group: {
+                        _id: null,
+                        totalSpent: { $sum: "$extractedData.totalAmount" },
+                        totalSubtotal: { $sum: "$extractedData.subtotal" },
+                        totalTax: { $sum: "$extractedData.taxAmount" },
+                        totalInvoices: { $sum: 1 }
+                    }
+                }
+            ]);
+
+            res.json({ 
+                analytics,
+                overallTotals: overallTotals[0] || {
+                    totalSpent: 0,
+                    totalSubtotal: 0,
+                    totalTax: 0,
+                    totalInvoices: 0
+                }
+            });
         } catch (error) {
             res.status(500).json({ error: error.message });
         }
@@ -486,6 +508,46 @@ class InvoiceController {
 
         } catch (error) {
             console.error('Bulk delete error:', error);
+            res.status(500).json({ error: error.message });
+        }
+    }
+
+    static async getOverallTotals(req, res) {
+        try {
+            const { platform, startDate, endDate } = req.query;
+
+            const matchStage = {};
+            if (platform && platform !== 'all') matchStage.platform = platform;
+            if (startDate || endDate) {
+                matchStage['extractedData.invoiceDate'] = {};
+                if (startDate) matchStage['extractedData.invoiceDate'].$gte = new Date(startDate);
+                if (endDate) matchStage['extractedData.invoiceDate'].$lte = new Date(endDate);
+            }
+
+            const totals = await Invoice.aggregate([
+                { $match: matchStage },
+                {
+                    $group: {
+                        _id: null,
+                        totalSpent: { $sum: "$extractedData.totalAmount" },
+                        totalSubtotal: { $sum: "$extractedData.subtotal" },
+                        totalTax: { $sum: "$extractedData.taxAmount" },
+                        totalInvoices: { $sum: 1 },
+                        avgInvoiceAmount: { $avg: "$extractedData.totalAmount" }
+                    }
+                }
+            ]);
+
+            res.json({
+                totals: totals[0] || {
+                    totalSpent: 0,
+                    totalSubtotal: 0,
+                    totalTax: 0,
+                    totalInvoices: 0,
+                    avgInvoiceAmount: 0
+                }
+            });
+        } catch (error) {
             res.status(500).json({ error: error.message });
         }
     }

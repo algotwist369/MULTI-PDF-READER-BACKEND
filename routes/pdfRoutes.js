@@ -25,6 +25,21 @@ router.get('/platform/:platform', PdfController.getPdfsByPlatform);
 // View PDF (serves PDF directly)
 router.get('/view/:fileName', PdfController.viewPdf);
 
+// Delete PDF file
+router.delete('/delete/:fileName', PdfController.deletePdf);
+
+// Bulk delete PDFs
+router.delete('/bulk-delete', PdfController.bulkDeletePdfs);
+
+// Cancel ongoing upload
+router.post('/cancel-upload/:uploadId', PdfController.cancelUpload);
+
+// Pause ongoing upload
+router.post('/pause-upload/:uploadId', PdfController.pauseUpload);
+
+// Resume paused upload
+router.post('/resume-upload/:uploadId', PdfController.resumeUpload);
+
 // Debug endpoint for file path issues
 router.get('/debug/:fileName', PdfController.debugFilePath);
 

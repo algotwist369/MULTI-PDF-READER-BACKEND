@@ -20,6 +20,9 @@ router.get('/analytics/summary', [
 // Get analytics 
 router.get('/analytics/summary', InvoiceController.getAnalytics);
 
+// Get overall totals
+router.get('/totals', InvoiceController.getOverallTotals);
+
 // Get invoices by platform (must come before /:id route)
 router.get('/platform/:platform', InvoiceController.getInvoicesByPlatform);
 
